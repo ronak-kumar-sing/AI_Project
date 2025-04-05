@@ -1,5 +1,5 @@
 export const callGeminiAPI = async (prompt: string): Promise<string> => {
-  const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY
+  const apiKey = 'AIzaSyCUWS9aINo_Bmb2FqJe1_GFOScsiHWQiJ0'
   if (!apiKey) {
     console.error("Gemini API key is missing. Please set the NEXT_PUBLIC_GEMINI_API_KEY environment variable.")
     return "Gemini API key is not configured."
