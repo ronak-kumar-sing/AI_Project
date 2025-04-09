@@ -13,22 +13,110 @@ export default function VideoChat() {
   const [messages, setMessages] = useState<{ text: string; sender: string }[]>([])
   const [connectionTime, setConnectionTime] = useState(0)
   const [connectionTimer, setConnectionTimer] = useState<NodeJS.Timeout | null>(null)
+  // New states for face verification
+  const [isVerifying, setIsVerifying] = useState(false)
+  const [isVerified, setIsVerified] = useState(false)
+  const [verificationMessage, setVerificationMessage] = useState("")
 
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const messageInputRef = useRef<HTMLInputElement>(null)
+  // Canvas reference for face verification
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  // Start face verification process
+  const startVerification = async () => {
+    setIsVerifying(true)
+    setVerificationMessage("Starting face verification...")
+
+    try {
+      // Request camera access
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: false, // Audio not needed for verification
+      })
+
+      // Display local video during verification
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream
+        setLocalStream(stream)
+      }
+
+      setVerificationMessage("Please look at the camera for face verification...")
+
+      // Simulate verification process after 3 seconds
+      setTimeout(() => {
+        verifyFace(stream)
+      }, 3000)
+    } catch (error) {
+      console.error("Error accessing camera:", error)
+      setIsVerifying(false)
+      setVerificationMessage("Could not access camera. Please check permissions.")
+    }
+  }
+
+  // Verify face using the stream
+  const verifyFace = async (stream: MediaStream) => {
+    // Capture image from video stream
+    if (localVideoRef.current && canvasRef.current) {
+      const videoEl = localVideoRef.current
+      const canvas = canvasRef.current
+      canvas.width = videoEl.videoWidth
+      canvas.height = videoEl.videoHeight
+      const ctx = canvas.getContext('2d')
+
+      if (ctx) {
+        // Draw video frame to canvas
+        ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height)
+
+        // In a real app, you would send this image to your verification API
+        // For now, simulate a verification with 80% success rate
+        const isSuccess = Math.random() < 0.8
+
+        if (isSuccess) {
+          setIsVerified(true)
+          setVerificationMessage("Face verification successful!")
+          // Keep stream open for the video chat
+          setTimeout(() => {
+            setIsVerifying(false)
+            startSearching(stream) // Pass the existing stream
+          }, 1000)
+        } else {
+          // Stop stream if verification fails
+          stream.getTracks().forEach(track => track.stop())
+          setLocalStream(null)
+          setIsVerifying(false)
+          setVerificationMessage("Face verification failed. Please try again.")
+        }
+      }
+    }
+  }
 
   // Simulate connection to another user
-  const startSearching = async () => {
+  const startSearching = async (existingStream?: MediaStream) => {
     setIsSearching(true)
     setMessage("Searching for available users...")
 
     try {
-      // Request camera and microphone access
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      })
+      let stream = existingStream
+
+      if (!stream) {
+        // Request camera and microphone access if we don't have a stream
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true,
+        })
+      } else if (!stream.getAudioTracks().length) {
+        // If we have a video-only stream from verification, add audio
+        const audioStream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        })
+
+        // Add audio tracks to existing stream
+        audioStream.getAudioTracks().forEach(track => {
+          stream?.addTrack(track)
+        })
+      }
 
       // Display local video
       if (localVideoRef.current) {
@@ -74,9 +162,11 @@ export default function VideoChat() {
         // Simulate remote video with a placeholder
         if (remoteVideoRef.current) {
           // In a real implementation, this would be the partner's stream
-          // For now, we'll just show a placeholder
           remoteVideoRef.current.poster = `/placeholder.svg?height=480&width=640`
         }
+
+        // Keep video and audio active - don't turn off camera after connecting
+        // This leaves the camera on for the entire duration of the call
       }, searchTime)
     } catch (error) {
       console.error("Error accessing camera:", error)
@@ -99,6 +189,7 @@ export default function VideoChat() {
     setMessages([])
     setMessage("")
     setConnectionTime(0)
+    setIsVerified(false)
 
     // Clear timer
     if (connectionTimer) {
@@ -183,14 +274,22 @@ export default function VideoChat() {
         {/* Video area */}
         <div className="space-y-4">
           <div className="relative bg-mirror-darker rounded-lg overflow-hidden aspect-video">
-            {isSearching || isConnected ? (
+            {(isVerifying || isSearching || isConnected) ? (
               <video ref={localVideoRef} className="w-full h-full object-cover" autoPlay playsInline muted />
             ) : (
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="text-center p-4">
                   <i className="fas fa-video text-mirror-accent text-3xl mb-2"></i>
                   <p className="text-lg font-semibold">Your Video</p>
-                  <p className="text-sm text-gray-300 mt-2">Start searching to enable your camera</p>
+                  <p className="text-sm text-gray-300 mt-2">Verify face to enable camera</p>
+                </div>
+              </div>
+            )}
+            {isConnected && !localVideoRef.current?.srcObject && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-70">
+                <div className="text-center">
+                  <i className="fas fa-video-slash text-red-500 text-3xl mb-2"></i>
+                  <p className="text-white">Camera off</p>
                 </div>
               </div>
             )}
@@ -208,7 +307,7 @@ export default function VideoChat() {
                   <i className="fas fa-user-friends text-mirror-accent text-3xl mb-2"></i>
                   <p className="text-lg font-semibold">Partner Video</p>
                   <p className="text-sm text-gray-300 mt-2">
-                    {isSearching ? "Searching for a partner..." : "Start searching to find someone"}
+                    {isSearching ? "Searching for a partner..." : isVerifying ? "Complete verification first" : "Start verification to find someone"}
                   </p>
                 </div>
               </div>
@@ -220,14 +319,21 @@ export default function VideoChat() {
             )}
           </div>
 
-          {!isConnected && !isSearching && (
+          {!isConnected && !isSearching && !isVerifying && (
             <button
               className="w-full py-3 bg-mirror-accent rounded-lg text-white hover:bg-mirror-accent2 transition-all"
-              onClick={startSearching}
+              onClick={startVerification}
             >
-              <i className="fas fa-random mr-2"></i>
-              Find Random Partner
+              <i className="fas fa-user-shield mr-2"></i>
+              Verify Face to Start
             </button>
+          )}
+
+          {isVerifying && (
+            <div className="text-center py-3 bg-mirror-darker rounded-lg">
+              <div className="inline-block w-5 h-5 border-2 border-mirror-accent border-t-transparent rounded-full animate-spin mr-2"></div>
+              <span>{verificationMessage || "Verifying your face..."}</span>
+            </div>
           )}
 
           {isSearching && (
@@ -256,11 +362,10 @@ export default function VideoChat() {
                     className={`flex ${msg.sender === (currentUser?.name || "You") ? "justify-end" : "justify-start"}`}
                   >
                     <div
-                      className={`max-w-[80%] rounded-lg px-3 py-2 ${
-                        msg.sender === (currentUser?.name || "You")
-                          ? "bg-mirror-accent text-white"
-                          : "bg-gray-700 text-white"
-                      }`}
+                      className={`max-w-[80%] rounded-lg px-3 py-2 ${msg.sender === (currentUser?.name || "You")
+                        ? "bg-mirror-accent text-white"
+                        : "bg-gray-700 text-white"
+                        }`}
                     >
                       <div className="text-xs opacity-75 mb-1">{msg.sender}</div>
                       <div>{msg.text}</div>
@@ -289,9 +394,16 @@ export default function VideoChat() {
             </button>
           </div>
 
-          {message && <div className="mt-3 text-center text-sm text-gray-400">{message}</div>}
+          {(message || verificationMessage) && (
+            <div className="mt-3 text-center text-sm text-gray-400">
+              {isVerifying ? verificationMessage : message}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Hidden canvas for face verification */}
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
     </div>
   )
 }
