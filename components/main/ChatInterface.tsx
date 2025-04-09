@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { useUser } from "@/context/UserContext"
 import { useVoice } from "@/context/VoiceContext"
-// Add the import for the Gemini API helper at the top of the file
+import { useWeather } from "@/context/WeatherContext"
 import { callGeminiAPI } from "@/config/api-config"
 
 interface Message {
@@ -14,6 +14,7 @@ interface Message {
 export default function ChatInterface() {
   const { currentUser } = useUser()
   const { speakText } = useVoice()
+  const { weatherData } = useWeather()
   const [messages, setMessages] = useState<Message[]>([
     { text: "Hello! How can I assist you today?", sender: "assistant" },
   ])
@@ -63,24 +64,71 @@ export default function ChatInterface() {
     }
   }
 
-  // Update the processCommand function to use the real Gemini API for complex queries
+  // Get outfit recommendation based on weather
+  const getOutfitRecommendation = () => {
+    // Check if real weather data has been loaded
+    if (weatherData.description === "Loading weather..." || weatherData.temperature === "--°C") {
+      return "I'm still loading weather data. Please ask again in a moment for outfit recommendations."
+    }
 
-  // Modify the processCommand function to improve error handling
+    const temp = weatherData.tempNumeric
+    const description = weatherData.description.toLowerCase()
+
+    let outfit = ""
+
+    if (temp < 0) {
+      outfit = "You should wear a heavy winter coat, scarf, gloves, thermal layers, and winter boots."
+    } else if (temp < 10) {
+      outfit = "I recommend a winter coat, hat, and warm layers today."
+    } else if (temp < 15) {
+      outfit = "A light jacket or heavy sweater would be appropriate today."
+    } else if (temp < 20) {
+      outfit = "Consider wearing a light sweater or long-sleeve shirt."
+    } else if (temp < 25) {
+      outfit = "It's pleasant out! A t-shirt with a light jacket or sweater should work well."
+    } else if (temp < 30) {
+      outfit = "It's warm today. A t-shirt and shorts or light pants would be comfortable."
+    } else {
+      outfit = "It's hot out there! Wear light, breathable clothing like shorts and a t-shirt."
+    }
+
+    // Additional recommendations based on weather conditions
+    if (description.includes("rain") || description.includes("drizzle") || description.includes("shower")) {
+      outfit += " Don't forget an umbrella and waterproof shoes!"
+    } else if (description.includes("snow") || description.includes("sleet")) {
+      outfit += " Be sure to wear waterproof boots and warm socks."
+    } else if (description.includes("wind") || parseInt(weatherData.windSpeed) > 20) {
+      outfit += " It's windy, so avoid loose items that might blow around."
+    } else if (description.includes("sunny") || description.includes("clear")) {
+      outfit += " Don't forget sunglasses and sunscreen for UV protection."
+    }
+
+    return `Based on the current weather (${weatherData.temperature}, ${weatherData.description}), ${outfit}`
+  }
+
   const processCommand = async (command: string) => {
     const lowerCommand = command.toLowerCase()
     let response = ""
 
+    // Add outfit recommendation handling
+    if (lowerCommand.includes("outfit") || lowerCommand.includes("wear") ||
+      lowerCommand.includes("clothes") || lowerCommand.includes("dress")) {
+      response = getOutfitRecommendation()
+    }
     // Simple command processing
-    if (lowerCommand.includes("time")) {
+    else if (lowerCommand.includes("time")) {
       const now = new Date()
       response = `The time is ${now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}`
     } else if (lowerCommand.includes("date")) {
       const now = new Date()
       response = `Today is ${now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}`
     } else if (lowerCommand.includes("weather")) {
-      const temp = document.getElementById("temperature")?.textContent
-      const desc = document.getElementById("weather-description")?.textContent
-      response = `The current weather is ${temp} and ${desc}`
+      // Check if real weather data has been loaded
+      if (weatherData.description === "Loading weather..." || weatherData.temperature === "--°C") {
+        response = "I'm still loading weather data. Please check back in a moment."
+      } else {
+        response = `The current weather is ${weatherData.temperature} and ${weatherData.description}`
+      }
     } else if (lowerCommand.includes("news")) {
       response = "Here are the latest headlines. You can see them on your screen."
     } else if (lowerCommand.includes("hello") || lowerCommand.includes("hi")) {
@@ -107,7 +155,7 @@ export default function ChatInterface() {
 
       try {
         console.log("Sending complex query to Gemini API")
-        const prompt = `You are an AI assistant for a smart mirror application. The user's name is ${currentUser?.name || "Guest"}. 
+        const prompt = `You are an AI assistant for a smart mirror application. The user's name is ${currentUser?.name || "Guest"}.
     Please provide a helpful, concise response to this query: "${command}"
     Keep your response under 3 sentences and make it conversational.`
 

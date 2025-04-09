@@ -3,6 +3,7 @@ import "./globals.css"
 import type { Metadata } from "next"
 import { Inter, Space_Grotesk } from "next/font/google"
 import { ThemeProvider } from "@/components/theme-provider"
+import { WeatherProvider } from "@/context/WeatherContext"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -19,7 +20,7 @@ const spaceGrotesk = Space_Grotesk({
 export const metadata: Metadata = {
   title: "Smart Mirror Assistant",
   description: "AI-powered smart mirror with face recognition",
-    generator: 'v0.dev'
+  generator: 'v0.dev'
 }
 
 export default function RootLayout({
@@ -34,13 +35,11 @@ export default function RootLayout({
       </head>
       <body className={`${inter.variable} ${spaceGrotesk.variable} ${inter.className}`}>
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
-          {children}
+          <WeatherProvider>
+            {children}
+          </WeatherProvider>
         </ThemeProvider>
       </body>
     </html>
   )
 }
-
-
-
-import './globals.css'
